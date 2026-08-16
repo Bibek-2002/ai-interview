@@ -20,6 +20,7 @@ export interface DetectedQuestionFromImage {
 
 export interface AppSettings {
   geminiApiKey: string
+  geminiApiKeys: string
   assemblyAiApiKey: string
   geminiModel: string
   alwaysOnTop: boolean

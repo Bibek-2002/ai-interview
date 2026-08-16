@@ -17,6 +17,7 @@ export interface AnswerEntry {
 
 export interface AppSettings {
   geminiApiKey: string
+  geminiApiKeys: string
   assemblyAiApiKey: string
   geminiModel: string
   alwaysOnTop: boolean
@@ -92,6 +93,7 @@ interface InterviewState {
 
 const DEFAULT_SETTINGS: AppSettings = {
   geminiApiKey: '',
+  geminiApiKeys: '',
   assemblyAiApiKey: '',
   geminiModel: 'gemini-3.6-flash',
   alwaysOnTop: true,

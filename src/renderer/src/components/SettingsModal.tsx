@@ -95,7 +95,7 @@ export function SettingsModal(): React.ReactNode | null {
           {/* Gemini API Key */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-dark-200">
-              Gemini API Key
+              Gemini API Keys
               <a
                 href="https://aistudio.google.com/app/apikey"
                 target="_blank"
@@ -106,16 +106,18 @@ export function SettingsModal(): React.ReactNode | null {
               </a>
             </label>
             <p className="text-xs text-dark-500">
-              Used for answer generation
+              Paste one key per line. The app automatically switches to the next key only when Gemini returns a 429 quota error.
             </p>
             <div className="relative">
-              <input
-                type={showOpenAIKey ? 'text' : 'password'}
-                value={localSettings.geminiApiKey}
-                onChange={(e) =>
-                  setLocalSettings({ ...localSettings, geminiApiKey: e.target.value })
-                }
-                placeholder="Enter your Gemini API key"
+              <textarea
+                value={localSettings.geminiApiKeys || localSettings.geminiApiKey}
+                onChange={(e) => {
+                  const geminiApiKeys = e.target.value
+                  const geminiApiKey = geminiApiKeys.split(/[\r\n,]+/).map((key) => key.trim()).find(Boolean) || ''
+                  setLocalSettings({ ...localSettings, geminiApiKeys, geminiApiKey })
+                }}
+                placeholder={'Paste Gemini API keys, one per line\nKey 1\nKey 2\nKey 3'}
+                rows={5}
                 className="w-full px-3 py-2 pr-10 bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 placeholder-dark-500 focus:outline-none focus:border-blue-500 transition-colors"
               />
               <button

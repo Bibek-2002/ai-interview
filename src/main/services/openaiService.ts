@@ -25,6 +25,7 @@ export class OpenAIService extends EventEmitter {
     return this.request({ systemInstruction: { parts: [{ text: 'Solve the interview problem clearly with explanation, code, complexity, and edge cases.' }] }, contents: [{ role: 'user', parts: [{ text: questionText || 'Extract the question from this screenshot and solve it.' }, { inlineData: { mimeType: 'image/png', data } }] }], generationConfig: { maxOutputTokens: this.config.maxTokens || 2000, temperature: this.config.temperature || 0.7 } })
   }
   clearHistory(): void { this.history = [] }
+  setApiKey(apiKey: string): void { this.config.apiKey = apiKey }
 
   private async request(payload: Record<string, unknown>): Promise<string> {
     const model = this.config.model || 'gemini-3.6-flash'

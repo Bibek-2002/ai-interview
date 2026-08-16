@@ -19,6 +19,27 @@ let mainWindow: BrowserWindow | null = null
 let isCapturing = false
 let pendingQuestionText = ''
 let questionGenerationTimer: ReturnType<typeof setTimeout> | null = null
+let geminiApiKeys: string[] = []
+let activeGeminiKeyIndex = 0
+
+async function generateWithKeyFailover(question: string): Promise<void> {
+  if (!openaiService) return
+  let lastError: unknown
+  while (activeGeminiKeyIndex < geminiApiKeys.length) {
+    try {
+      await openaiService.generateAnswer(question)
+      return
+    } catch (error) {
+      lastError = error
+      const message = error instanceof Error ? error.message : String(error)
+      if (!message.includes('Gemini request failed (429)') || activeGeminiKeyIndex >= geminiApiKeys.length - 1) break
+      activeGeminiKeyIndex += 1
+      console.warn(`[Gemini] Quota reached; switching to key ${activeGeminiKeyIndex + 1} of ${geminiApiKeys.length}`)
+      openaiService.setApiKey(geminiApiKeys[activeGeminiKeyIndex])
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError))
+}
 
 export function initializeIpcHandlers(window: BrowserWindow): void {
   mainWindow = window
@@ -79,14 +100,19 @@ export function initializeIpcHandlers(window: BrowserWindow): void {
   ipcMain.handle('start-capture', async () => {
     if (isCapturing) return { success: true }
     const settings = settingsManager?.getSettings()
+    geminiApiKeys = (settings?.geminiApiKeys || settings?.geminiApiKey || '')
+      .split(/[\r\n,]+/)
+      .map((apiKey) => apiKey.trim())
+      .filter(Boolean)
+    activeGeminiKeyIndex = 0
 
     // Debug: Log API key status (not the actual keys)
     console.log('API Keys configured:', {
-      gemini: settings?.geminiApiKey ? `Yes (${settings.geminiApiKey.length} chars)` : 'No',
+      gemini: geminiApiKeys.length ? `Yes (${geminiApiKeys.length} key${geminiApiKeys.length === 1 ? '' : 's'})` : 'No',
       assemblyai: settings?.assemblyAiApiKey ? `Yes (${settings.assemblyAiApiKey.length} chars)` : 'No'
     })
 
-    if (!settings?.geminiApiKey || !settings.assemblyAiApiKey) {
+    if (!geminiApiKeys.length || !settings?.assemblyAiApiKey) {
       throw new Error('Gemini and AssemblyAI API keys must be configured in Settings.')
     }
 
@@ -110,7 +136,7 @@ export function initializeIpcHandlers(window: BrowserWindow): void {
 
       // Initialize OpenAI service for answer generation
       openaiService = new OpenAIService({
-        apiKey: settings.geminiApiKey,
+        apiKey: geminiApiKeys[0],
         model: settings.geminiModel,
         resumeDescription: settings.resumeDescription
       })
@@ -166,7 +192,7 @@ export function initializeIpcHandlers(window: BrowserWindow): void {
           console.log('Question detected:', question)
           mainWindow?.webContents.send('question-detected', { ...detection, text: question })
           try {
-            await openaiService.generateAnswer(question)
+            await generateWithKeyFailover(question)
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error)
             console.error('[Gemini] Answer generation failed:', error)
