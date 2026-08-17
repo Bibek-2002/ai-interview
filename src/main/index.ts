@@ -1,10 +1,48 @@
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
-import { app, BrowserWindow, session, shell } from 'electron'
+import { app, BrowserWindow, globalShortcut, Menu, session, shell, Tray } from 'electron'
 import { join } from 'path'
 import icon from '../../resources/icon.png?asset'
 import { cleanupIpcHandlers, initializeIpcHandlers } from './ipc/handlers'
 
 let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
+let isQuitting = false
+
+function showMainWindow(): void {
+  if (!mainWindow) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
+
+function toggleMainWindow(): void {
+  if (!mainWindow) return
+  if (mainWindow.isVisible()) {
+    mainWindow.hide()
+  } else {
+    showMainWindow()
+  }
+}
+
+function createTray(): void {
+  tray = new Tray(icon)
+  tray.setToolTip('Interview Copilot — Alt+Z to show or hide')
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: 'Show Interview Copilot', click: showMainWindow },
+      { label: 'Hide Interview Copilot', click: () => mainWindow?.hide() },
+      { type: 'separator' },
+      {
+        label: 'Quit',
+        click: () => {
+          isQuitting = true
+          app.quit()
+        }
+      }
+    ])
+  )
+  tray.on('click', toggleMainWindow)
+}
 
 function createWindow(): void {
   // Create the browser window with screen share protection
@@ -18,7 +56,8 @@ function createWindow(): void {
     frame: false, // Frameless for custom title bar
     transparent: false,
     alwaysOnTop: true, // Stay on top by default
-    skipTaskbar: false,
+    // The app is controlled from Alt+Z or the system tray, not the taskbar.
+    skipTaskbar: true,
     resizable: true,
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
@@ -38,7 +77,15 @@ function createWindow(): void {
   }
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow?.show()
+    showMainWindow()
+  })
+
+  // Closing or minimizing keeps the interview session alive in the tray.
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault()
+      mainWindow?.hide()
+    }
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -78,9 +125,14 @@ app.whenReady().then(() => {
   })
 
   createWindow()
+  createTray()
+
+  // Global means this works even when the app window is not focused.
+  globalShortcut.register('Alt+Z', toggleMainWindow)
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    else showMainWindow()
   })
 })
 
@@ -94,5 +146,7 @@ app.on('window-all-closed', () => {
 
 // Cleanup on quit
 app.on('before-quit', () => {
+  isQuitting = true
+  globalShortcut.unregisterAll()
   cleanupIpcHandlers()
 })

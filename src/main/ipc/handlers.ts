@@ -272,11 +272,11 @@ export function initializeIpcHandlers(window: BrowserWindow): void {
   })
 
   ipcMain.handle('minimize-window', () => {
-    mainWindow?.minimize()
+    mainWindow?.hide()
   })
 
   ipcMain.handle('close-window', () => {
-    mainWindow?.close()
+    mainWindow?.hide()
   })
 
   // Clear conversation history

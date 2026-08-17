@@ -11,11 +11,15 @@ export interface ScreenshotResult {
  */
 export class ScreenshotService {
   private appWindowTitle?: string
+  private appWindowSourceId?: string
 
   constructor(appWindow?: BrowserWindow) {
-    // Get the app window title to exclude it from capture
+    // Keep the native source id: titles are not unique (a browser tab can also
+    // contain words such as "interview"), so they must not be used broadly to
+    // decide which window is the Copilot app.
     if (appWindow) {
       this.appWindowTitle = appWindow.getTitle()
+      this.appWindowSourceId = appWindow.getMediaSourceId()
     }
   }
 
@@ -44,23 +48,12 @@ export class ScreenshotService {
         sources.map((s) => s.name)
       )
 
-      // Filter out the AI assistant app window
-      // Common patterns: "Interview Copilot", "interview-copilot", etc.
-      const appWindowPatterns = [
-        'Interview Copilot',
-        'interview-copilot',
-        'interview',
-        'electron',
-        this.appWindowTitle?.toLowerCase() || ''
-      ].filter(Boolean)
-
       const filteredSources = sources.filter((source) => {
         const sourceNameLower = source.name.toLowerCase()
-        // Exclude if it matches any app window pattern
-        const isAppWindow = appWindowPatterns.some((pattern) => {
-          if (!pattern) return false
-          return sourceNameLower.includes(pattern) || sourceNameLower === pattern
-        })
+        // Prefer the native id; exact-title matching is only a fallback.
+        const isAppWindow =
+          source.id === this.appWindowSourceId ||
+          (!!this.appWindowTitle && source.name === this.appWindowTitle)
 
         // Also exclude if it's clearly an Electron dev window
         const isElectronDev =

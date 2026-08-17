@@ -77,6 +77,14 @@ pnpm build:linux  # Linux
 6. **View suggested answers** - Professional answers appear in the bottom panel
 7. **Click "Stop"** when done
 
+### Background mode
+
+- The app does not appear in the Windows taskbar.
+- Press **Alt + Z** at any time to hide or show it.
+- Click the Interview Copilot icon in the system tray to show or hide it; right-click it and choose **Quit** to fully exit.
+- The minimize and close buttons hide the app to the tray, so an active session continues.
+- For use without a CMD window, build and launch the Windows installer (`pnpm build:win`). Start the installed **Interview Copilot** shortcut, rather than `pnpm dev`; development mode is tied to its terminal process.
+
 ## Architecture
 
 ```
