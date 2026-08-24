@@ -16,9 +16,8 @@ export interface AnswerEntry {
 }
 
 export interface AppSettings {
-  geminiApiKey: string
-  assemblyAiApiKey: string
-  geminiModel: string
+  openaiApiKey: string
+  openaiModel: string
   alwaysOnTop: boolean
   windowOpacity: number
   pauseThreshold: number
@@ -72,7 +71,7 @@ interface InterviewState {
   addAnswer: (entry: AnswerEntry) => void
   updateCurrentAnswer: (chunk: string) => void
   setCurrentQuestion: (question: string) => void
-  finalizeAnswer: (completedAnswer?: string) => void | Promise<void>
+  finalizeAnswer: () => void | Promise<void>
   clearAnswers: () => void
 
   setSettings: (settings: AppSettings) => void
@@ -91,9 +90,8 @@ interface InterviewState {
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
-  geminiApiKey: '',
-  assemblyAiApiKey: '',
-  geminiModel: 'gemini-3.6-flash',
+  openaiApiKey: '',
+  openaiModel: 'gpt-4o-mini',
   alwaysOnTop: true,
   windowOpacity: 1.0,
   pauseThreshold: 1500,
@@ -157,16 +155,13 @@ export const useInterviewStore = create<InterviewState>((set, get) => ({
 
   setCurrentQuestion: (question) => set({ currentQuestion: question }),
 
-  finalizeAnswer: async (completedAnswer) => {
+  finalizeAnswer: async () => {
     const state = get()
-    // The main process supplies the complete assembled Gemini response. Use it
-    // directly so the final UI entry cannot be truncated by event/render timing.
-    const answer = completedAnswer?.trim() || state.currentAnswer
-    if (answer && state.currentQuestion) {
+    if (state.currentAnswer && state.currentQuestion) {
       const entry: AnswerEntry = {
         id: Date.now().toString(),
         question: state.currentQuestion,
-        answer,
+        answer: state.currentAnswer,
         timestamp: Date.now(),
         isStreaming: false
       }

@@ -19,9 +19,8 @@ export interface DetectedQuestionFromImage {
 }
 
 export interface AppSettings {
-  geminiApiKey: string
-  assemblyAiApiKey: string
-  geminiModel: string
+  openaiApiKey: string
+  openaiModel: string
   alwaysOnTop: boolean
   windowOpacity: number
   pauseThreshold: number

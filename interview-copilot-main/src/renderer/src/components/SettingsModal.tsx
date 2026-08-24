@@ -7,19 +7,12 @@ interface ModelOption {
   name: string
 }
 
-const GEMINI_MODELS: ModelOption[] = [
-  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite' },
-  { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash' },
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' }
-]
-
 export function SettingsModal(): React.ReactNode | null {
   const { settings, showSettings, setShowSettings, setSettings } = useInterviewStore()
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings)
   const [showOpenAIKey, setShowOpenAIKey] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
-  const [models, setModels] = useState<ModelOption[]>(GEMINI_MODELS)
+  const [models, setModels] = useState<ModelOption[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
   const [modelsError, setModelsError] = useState<string | null>(null)
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -35,18 +28,53 @@ export function SettingsModal(): React.ReactNode | null {
       clearTimeout(fetchTimeoutRef.current)
     }
 
-    // Gemini's available model names are configured locally. Do not call the
-    // OpenAI models endpoint with a Gemini key.
-    setModels(GEMINI_MODELS)
+    const apiKey = localSettings.openaiApiKey?.trim()
+
+    // If API key is empty, clear models and error
+    if (!apiKey || apiKey.length === 0) {
+      setModels([])
+      setModelsError(null)
+      setModelsLoading(false)
+      return
+    }
+
+    // Debounce API call by 800ms
+    setModelsLoading(true)
     setModelsError(null)
-    setModelsLoading(false)
+
+    fetchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const result = await window.api.fetchOpenAIModels(apiKey)
+        if (result.success) {
+          setModels(result.models)
+          setModelsError(null)
+
+          // If current model is not in the list, set to first available model
+          if (
+            result.models.length > 0 &&
+            !result.models.find((m) => m.id === localSettings.openaiModel)
+          ) {
+            setLocalSettings({ ...localSettings, openaiModel: result.models[0].id })
+          }
+        } else {
+          setModelsError(result.error || 'Failed to fetch models')
+          setModels([])
+        }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch models'
+        setModelsError(errorMessage)
+        setModels([])
+      } finally {
+        setModelsLoading(false)
+      }
+    }, 800)
 
     return () => {
       if (fetchTimeoutRef.current) {
         clearTimeout(fetchTimeoutRef.current)
       }
     }
-  }, [])
+  }, [localSettings.openaiApiKey])
 
   if (!showSettings) return null
 
@@ -93,12 +121,12 @@ export function SettingsModal(): React.ReactNode | null {
 
         {/* Content */}
         <div className="px-5 py-6 space-y-5 max-h-[32rem] overflow-y-auto custom-scrollbar">
-          {/* Gemini API Key */}
+          {/* OpenAI API Key */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-dark-200">
-              Gemini API Key
+              OpenAI API Key
               <a
-                href="https://aistudio.google.com/app/apikey"
+                href="https://platform.openai.com/api-keys"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="ml-2 text-xs text-blue-400 hover:underline"
@@ -106,15 +134,17 @@ export function SettingsModal(): React.ReactNode | null {
                 Get key →
               </a>
             </label>
-            <p className="text-xs text-dark-500">Used for answer generation and visual analysis.</p>
+            <p className="text-xs text-dark-500">
+              Used for both speech-to-text and answer generation
+            </p>
             <div className="relative">
               <input
                 type={showOpenAIKey ? 'text' : 'password'}
-                value={localSettings.geminiApiKey}
-                onChange={(e) => {
-                  setLocalSettings({ ...localSettings, geminiApiKey: e.target.value.trim() })
-                }}
-                placeholder="Enter your Gemini API key"
+                value={localSettings.openaiApiKey}
+                onChange={(e) =>
+                  setLocalSettings({ ...localSettings, openaiApiKey: e.target.value })
+                }
+                placeholder="Enter your OpenAI API key"
                 className="w-full px-3 py-2 pr-10 bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 placeholder-dark-500 focus:outline-none focus:border-blue-500 transition-colors"
               />
               <button
@@ -127,21 +157,7 @@ export function SettingsModal(): React.ReactNode | null {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-dark-200">AssemblyAI API Key</label>
-            <p className="text-xs text-dark-500">Used for live English transcription.</p>
-            <input
-              type="password"
-              value={localSettings.assemblyAiApiKey}
-              onChange={(e) =>
-                setLocalSettings({ ...localSettings, assemblyAiApiKey: e.target.value })
-              }
-              placeholder="Enter your AssemblyAI API key"
-              className="w-full px-3 py-2 bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 placeholder-dark-500 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-
-          {/* Gemini Model */}
+          {/* OpenAI Model */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-dark-200">
               Answer Generation Model
@@ -156,15 +172,16 @@ export function SettingsModal(): React.ReactNode | null {
             ) : modelsError ? (
               <div className="space-y-1">
                 <select
-                  value={localSettings.geminiModel}
+                  value={localSettings.openaiModel}
                   onChange={(e) =>
-                    setLocalSettings({ ...localSettings, geminiModel: e.target.value })
+                    setLocalSettings({ ...localSettings, openaiModel: e.target.value })
                   }
                   className="w-full px-3 py-2 bg-dark-800 border border-red-500/50 rounded-lg text-sm text-dark-100 focus:outline-none focus:border-red-500 transition-colors"
                 >
-                  <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
-                  <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                  <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                  <option value="gpt-4o-mini">GPT-4o Mini (Fallback)</option>
+                  <option value="gpt-4o">GPT-4o (Fallback)</option>
+                  <option value="gpt-4-turbo">GPT-4 Turbo (Fallback)</option>
+                  <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Fallback)</option>
                 </select>
                 <div className="flex items-center gap-1.5 text-xs text-red-400">
                   <AlertCircle size={12} />
@@ -173,9 +190,9 @@ export function SettingsModal(): React.ReactNode | null {
               </div>
             ) : models.length > 0 ? (
               <select
-                value={localSettings.geminiModel}
+                value={localSettings.openaiModel}
                 onChange={(e) =>
-                  setLocalSettings({ ...localSettings, geminiModel: e.target.value })
+                  setLocalSettings({ ...localSettings, openaiModel: e.target.value })
                 }
                 className="w-full px-3 py-2 bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 focus:outline-none focus:border-blue-500 transition-colors"
               >
@@ -187,9 +204,9 @@ export function SettingsModal(): React.ReactNode | null {
               </select>
             ) : (
               <select
-                value={localSettings.geminiModel}
+                value={localSettings.openaiModel}
                 onChange={(e) =>
-                  setLocalSettings({ ...localSettings, geminiModel: e.target.value })
+                  setLocalSettings({ ...localSettings, openaiModel: e.target.value })
                 }
                 className="w-full px-3 py-2 bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 focus:outline-none focus:border-blue-500 transition-colors"
                 disabled

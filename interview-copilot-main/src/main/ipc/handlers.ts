@@ -17,8 +17,6 @@ let screenshotService: ScreenshotService | null = null
 let visionService: VisionService | null = null
 let mainWindow: BrowserWindow | null = null
 let isCapturing = false
-let pendingQuestionText = ''
-let questionGenerationTimer: ReturnType<typeof setTimeout> | null = null
 
 export function initializeIpcHandlers(window: BrowserWindow): void {
   mainWindow = window
@@ -77,20 +75,15 @@ export function initializeIpcHandlers(window: BrowserWindow): void {
 
   // Audio capture handlers
   ipcMain.handle('start-capture', async () => {
-    if (isCapturing) return { success: true }
     const settings = settingsManager?.getSettings()
-    const geminiApiKey = settings?.geminiApiKey || ''
 
     // Debug: Log API key status (not the actual keys)
     console.log('API Keys configured:', {
-      gemini: geminiApiKey ? 'Yes' : 'No',
-      assemblyai: settings?.assemblyAiApiKey
-        ? `Yes (${settings.assemblyAiApiKey.length} chars)`
-        : 'No'
+      openai: settings?.openaiApiKey ? `Yes (${settings.openaiApiKey.length} chars)` : 'No'
     })
 
-    if (!geminiApiKey || !settings?.assemblyAiApiKey) {
-      throw new Error('Gemini and AssemblyAI API keys must be configured in Settings.')
+    if (!settings?.openaiApiKey) {
+      throw new Error('OpenAI API key not configured. Please add it in Settings.')
     }
 
     try {
@@ -107,14 +100,15 @@ export function initializeIpcHandlers(window: BrowserWindow): void {
 
       // Initialize Whisper service for transcription
       whisperService = new WhisperService({
-        apiKey: settings.assemblyAiApiKey,
-        model: 'universal-streaming-english'
+        apiKey: settings.openaiApiKey,
+        model: 'whisper-1',
+        language: 'en'
       })
 
       // Initialize OpenAI service for answer generation
       openaiService = new OpenAIService({
-        apiKey: geminiApiKey,
-        model: settings.geminiModel,
+        apiKey: settings.openaiApiKey,
+        model: settings.openaiModel,
         resumeDescription: settings.resumeDescription
       })
 
@@ -130,13 +124,22 @@ export function initializeIpcHandlers(window: BrowserWindow): void {
       // Set up Whisper event listeners
       whisperService.on('transcript', async (event) => {
         console.log('Transcript received:', event.text)
-        if (pendingQuestionText && questionGenerationTimer) {
-          clearTimeout(questionGenerationTimer)
-          questionGenerationTimer = null
-          console.log('Deferring answer generation while more speech arrives')
-        }
         questionDetector?.addTranscript(event.text, event.isFinal)
         mainWindow?.webContents.send('transcript', event)
+
+        // Try early detection for faster response on high-confidence questions
+        if (event.isFinal && questionDetector && openaiService) {
+          const earlyDetection = questionDetector.checkEarlyDetection(event.text)
+          if (earlyDetection) {
+            console.log('Early question detection triggered:', earlyDetection.text)
+            mainWindow?.webContents.send('question-detected', earlyDetection)
+            try {
+              await openaiService.generateAnswer(earlyDetection.text)
+            } catch (error) {
+              mainWindow?.webContents.send('answer-error', (error as Error).message)
+            }
+          }
+        }
       })
 
       whisperService.on('utteranceEnd', () => {
@@ -157,30 +160,20 @@ export function initializeIpcHandlers(window: BrowserWindow): void {
 
       // Set up question detector listener ONCE
       questionDetector?.on('questionDetected', async (detection) => {
-        pendingQuestionText = [pendingQuestionText, detection.text].filter(Boolean).join(' ')
-        if (questionGenerationTimer) clearTimeout(questionGenerationTimer)
-        // Keep the response snappy while still allowing a closely-following
-        // sentence to cancel and merge with this question.
-        const pauseMs = Math.min(700, Math.max(300, settingsManager?.getSettings().pauseThreshold || 700))
-        questionGenerationTimer = setTimeout(async () => {
-          const question = pendingQuestionText
-          pendingQuestionText = ''
-          questionGenerationTimer = null
-          if (!question || !openaiService) return
-          console.log('Question detected:', question)
-          mainWindow?.webContents.send('question-detected', { ...detection, text: question })
+        console.log('Question detected:', detection.text)
+        mainWindow?.webContents.send('question-detected', detection)
+
+        if (openaiService) {
           try {
-            await openaiService.generateAnswer(question)
+            await openaiService.generateAnswer(detection.text)
           } catch (error) {
-            const message = error instanceof Error ? error.message : String(error)
-            console.error('[Gemini] Answer generation failed:', error)
-            mainWindow?.webContents.send('answer-error', message)
+            mainWindow?.webContents.send('answer-error', (error as Error).message)
           }
-        }, pauseMs)
+        }
       })
 
       // Start Whisper service
-      await whisperService.start()
+      whisperService.start()
       isCapturing = true
       console.log('Audio capture started successfully')
 
@@ -201,7 +194,10 @@ export function initializeIpcHandlers(window: BrowserWindow): void {
       whisperService = null
     }
 
-    // Keep listeners so an answer already being generated remains visible.
+    if (openaiService) {
+      openaiService.removeAllListeners()
+      openaiService = null
+    }
 
     // Remove question detector listeners to prevent duplicates on next start
     questionDetector?.removeAllListeners()
@@ -250,11 +246,11 @@ export function initializeIpcHandlers(window: BrowserWindow): void {
   })
 
   ipcMain.handle('minimize-window', () => {
-    mainWindow?.hide()
+    mainWindow?.minimize()
   })
 
   ipcMain.handle('close-window', () => {
-    mainWindow?.hide()
+    mainWindow?.close()
   })
 
   // Clear conversation history
@@ -363,10 +359,10 @@ export function initializeIpcHandlers(window: BrowserWindow): void {
   ipcMain.handle('analyze-screenshot', async (_event, imageData: string) => {
     const settings = settingsManager?.getSettings()
 
-    if (!settings?.geminiApiKey) {
+    if (!settings?.openaiApiKey) {
       return {
         success: false,
-        error: 'Gemini API key not configured. Please add it in Settings.'
+        error: 'OpenAI API key not configured. Please add it in Settings.'
       }
     }
 
@@ -374,15 +370,15 @@ export function initializeIpcHandlers(window: BrowserWindow): void {
       // Initialize services if needed
       if (!visionService) {
         visionService = new VisionService({
-          apiKey: settings.geminiApiKey,
-          model: settings.geminiModel
+          apiKey: settings.openaiApiKey,
+          model: 'gpt-4o'
         })
       }
 
       if (!openaiService) {
         openaiService = new OpenAIService({
-          apiKey: settings.geminiApiKey,
-          model: settings.geminiModel,
+          apiKey: settings.openaiApiKey,
+          model: settings.openaiModel,
           resumeDescription: settings.resumeDescription
         })
 
@@ -519,9 +515,6 @@ export function cleanupIpcHandlers(): void {
     openaiService = null
   }
   questionDetector = null
-  if (questionGenerationTimer) clearTimeout(questionGenerationTimer)
-  questionGenerationTimer = null
-  pendingQuestionText = ''
   settingsManager = null
   historyManager = null
   screenshotService = null

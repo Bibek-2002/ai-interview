@@ -74,8 +74,8 @@ export function useInterviewEvents() {
       updateCurrentAnswer(chunk)
     })
 
-    const unsubAnswerComplete = window.api.onAnswerComplete((answer) => {
-      finalizeAnswer(answer)
+    const unsubAnswerComplete = window.api.onAnswerComplete(() => {
+      finalizeAnswer()
     })
 
     const unsubCaptureError = window.api.onCaptureError((errorMsg) => {
