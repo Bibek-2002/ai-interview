@@ -7,6 +7,7 @@ import { ScreenshotService } from '../services/screenshotService'
 import { AppSettings, SettingsManager } from '../services/settingsManager'
 import { VisionService } from '../services/visionService'
 import { WhisperService } from '../services/whisperService'
+import { clearTerminalLogs, getTerminalLogs } from '../services/terminalLog'
 
 let whisperService: WhisperService | null = null
 let openaiService: OpenAIService | null = null
@@ -26,6 +27,13 @@ export function initializeIpcHandlers(window: BrowserWindow): void {
   historyManager = new HistoryManager()
   questionDetector = new QuestionDetector()
 
+  // In-app terminal: buffered main-process logs plus a narrow live event channel.
+  ipcMain.handle('get-terminal-logs', () => getTerminalLogs())
+  ipcMain.handle('clear-terminal-logs', () => {
+    clearTerminalLogs()
+    return { success: true }
+  })
+
   // Settings handlers
   ipcMain.handle('get-settings', () => {
     return settingsManager?.getSettings()
@@ -43,6 +51,16 @@ export function initializeIpcHandlers(window: BrowserWindow): void {
     }
 
     return settingsManager?.getSettings()
+  })
+
+  ipcMain.handle('select-gemini-key', (_event, index: number) => {
+    settingsManager?.updateSettings({ activeGeminiKeyIndex: index })
+    const settings = settingsManager?.getSettings()
+    if (!settings?.geminiApiKey) throw new Error(`Gemini API Key ${index + 1} is empty. Add it in Settings first.`)
+    openaiService?.setApiKey(settings.geminiApiKey)
+    visionService = null
+    console.log(`Switched to Gemini API Key ${settings.activeGeminiKeyIndex + 1}`)
+    return settings
   })
 
   ipcMain.handle('has-api-keys', () => {

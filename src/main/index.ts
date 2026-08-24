@@ -3,6 +3,10 @@ import { app, BrowserWindow, globalShortcut, Menu, session, shell, Tray } from '
 import { join } from 'path'
 import icon from '../../resources/icon.png?asset'
 import { cleanupIpcHandlers, initializeIpcHandlers } from './ipc/handlers'
+import { installMainProcessLogCapture, setTerminalLogWindow } from './services/terminalLog'
+
+// Keep normal console output intact while making safe, structured copies available to the UI.
+installMainProcessLogCapture()
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -67,6 +71,7 @@ function createWindow(): void {
       nodeIntegration: false
     }
   })
+  setTerminalLogWindow(mainWindow)
 
   // Enable screen share protection - hides window from screen capture
   mainWindow.setContentProtection(true)
@@ -138,6 +143,7 @@ app.whenReady().then(() => {
 
 // Quit when all windows are closed, except on macOS
 app.on('window-all-closed', () => {
+  setTerminalLogWindow(null)
   cleanupIpcHandlers()
   if (process.platform !== 'darwin') {
     app.quit()

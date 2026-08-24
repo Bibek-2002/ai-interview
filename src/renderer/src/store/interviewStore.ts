@@ -17,6 +17,8 @@ export interface AnswerEntry {
 
 export interface AppSettings {
   geminiApiKey: string
+  geminiApiKeys: string[]
+  activeGeminiKeyIndex: number
   assemblyAiApiKey: string
   geminiModel: string
   alwaysOnTop: boolean
@@ -49,6 +51,7 @@ interface InterviewState {
 
   // History view
   showHistory: boolean
+  showTerminal: boolean
 
   // Session timer
   isSessionActive: boolean
@@ -80,6 +83,7 @@ interface InterviewState {
   setShowSettings: (show: boolean) => void
 
   setShowHistory: (show: boolean) => void
+  setShowTerminal: (show: boolean) => void
 
   // Session timer actions
   startSession: () => void
@@ -92,6 +96,8 @@ interface InterviewState {
 
 const DEFAULT_SETTINGS: AppSettings = {
   geminiApiKey: '',
+  geminiApiKeys: ['', '', '', '', ''],
+  activeGeminiKeyIndex: 0,
   assemblyAiApiKey: '',
   geminiModel: 'gemini-3.6-flash',
   alwaysOnTop: true,
@@ -119,6 +125,7 @@ export const useInterviewStore = create<InterviewState>((set, get) => ({
   settings: DEFAULT_SETTINGS,
   showSettings: false,
   showHistory: false,
+  showTerminal: false,
 
   isSessionActive: false,
   sessionStartTime: null,
@@ -199,6 +206,7 @@ export const useInterviewStore = create<InterviewState>((set, get) => ({
   setShowSettings: (show) => set({ showSettings: show }),
 
   setShowHistory: (show) => set({ showHistory: show }),
+  setShowTerminal: (show) => set({ showTerminal: show }),
 
   startSession: () =>
     set({

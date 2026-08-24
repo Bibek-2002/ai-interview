@@ -93,10 +93,10 @@ export function SettingsModal(): React.ReactNode | null {
 
         {/* Content */}
         <div className="px-5 py-6 space-y-5 max-h-[32rem] overflow-y-auto custom-scrollbar">
-          {/* Gemini API Key */}
-          <div className="space-y-2">
+          {/* Gemini API Keys */}
+          <div className="space-y-3">
             <label className="block text-sm font-medium text-dark-200">
-              Gemini API Key
+              Gemini API Keys (1–5)
               <a
                 href="https://aistudio.google.com/app/apikey"
                 target="_blank"
@@ -106,25 +106,28 @@ export function SettingsModal(): React.ReactNode | null {
                 Get key →
               </a>
             </label>
-            <p className="text-xs text-dark-500">Used for answer generation and visual analysis.</p>
-            <div className="relative">
+            <p className="text-xs text-dark-500">The active key is selected from the 1–5 buttons beside Terminal.</p>
+            {localSettings.geminiApiKeys.map((apiKey, index) => <div key={index} className="relative">
+              <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold ${localSettings.activeGeminiKeyIndex === index ? 'text-violet-400' : 'text-dark-500'}`}>{index + 1}</span>
               <input
                 type={showOpenAIKey ? 'text' : 'password'}
-                value={localSettings.geminiApiKey}
+                value={apiKey}
                 onChange={(e) => {
-                  setLocalSettings({ ...localSettings, geminiApiKey: e.target.value.trim() })
+                  const geminiApiKeys = [...localSettings.geminiApiKeys]
+                  geminiApiKeys[index] = e.target.value.trim()
+                  setLocalSettings({ ...localSettings, geminiApiKeys, geminiApiKey: geminiApiKeys[localSettings.activeGeminiKeyIndex] || '' })
                 }}
-                placeholder="Enter your Gemini API key"
-                className="w-full px-3 py-2 pr-10 bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 placeholder-dark-500 focus:outline-none focus:border-blue-500 transition-colors"
+                placeholder={`Gemini API Key ${index + 1}`}
+                className="w-full px-8 py-2 pr-10 bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 placeholder-dark-500 focus:outline-none focus:border-blue-500 transition-colors"
               />
-              <button
+              {index === 0 && <button
                 type="button"
                 onClick={() => setShowOpenAIKey(!showOpenAIKey)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-dark-400 hover:text-dark-200"
               >
                 {showOpenAIKey ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
+              </button>}
+            </div>)}
           </div>
 
           <div className="space-y-2">

@@ -1,4 +1,4 @@
-import { History, Minus, Pin, PinOff, Play, Settings, Square, X } from 'lucide-react'
+import { History, Minus, Pin, PinOff, Play, Settings, Square, Terminal, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useSessionTimer } from '../hooks/useSessionTimer'
 import { useInterviewStore } from '../store/interviewStore'
@@ -9,6 +9,9 @@ export function Header(): React.JSX.Element {
     setShowSettings,
     showHistory,
     setShowHistory,
+    showTerminal,
+    setShowTerminal,
+    setSettings,
     isSessionActive,
     startSession,
     endSession
@@ -46,6 +49,14 @@ export function Header(): React.JSX.Element {
     }
   }
 
+  const selectGeminiKey = async (index: number): Promise<void> => {
+    try {
+      setSettings(await window.api.selectGeminiKey(index))
+    } catch (error) {
+      console.error('Failed to switch Gemini API key:', error)
+    }
+  }
+
   return (
     <header className="flex items-center justify-between px-4 py-1 bg-dark-900 border-b border-dark-700 select-none app-drag">
       {/* Session Timer Display */}
@@ -73,6 +84,22 @@ export function Header(): React.JSX.Element {
               <span className="text-xs font-medium">Start Session</span>
             </>
           )}
+        </button>
+
+        <div className="flex items-center gap-0.5 rounded bg-dark-800 p-0.5" title="Active Gemini API key">
+          {[0, 1, 2, 3, 4].map((index) => (
+            <button key={index} onClick={() => void selectGeminiKey(index)} className={`h-5 w-5 rounded text-[10px] font-semibold ${settings.activeGeminiKeyIndex === index ? 'bg-violet-500 text-white' : 'text-dark-400 hover:bg-dark-700 hover:text-dark-100'}`}>
+              {index + 1}
+            </button>
+          ))}
+        </div>
+
+        <button
+          onClick={() => setShowTerminal(!showTerminal)}
+          className={`p-1.5 rounded hover:bg-dark-700 transition-colors ${showTerminal ? 'text-violet-400' : 'text-dark-400'} hover:text-violet-400`}
+          title={showTerminal ? 'Hide terminal' : 'Show terminal'}
+        >
+          <Terminal size={14} />
         </button>
       </div>
 

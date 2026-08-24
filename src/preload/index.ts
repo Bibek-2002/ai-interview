@@ -22,6 +22,8 @@ export interface DetectedQuestionFromImage {
 
 export interface AppSettings {
   geminiApiKey: string
+  geminiApiKeys: string[]
+  activeGeminiKeyIndex: number
   assemblyAiApiKey: string
   geminiModel: string
   alwaysOnTop: boolean
@@ -45,12 +47,20 @@ export interface AnswerEntry {
   isStreaming: boolean
 }
 
+export interface TerminalLogEntry {
+  id: number
+  level: 'log' | 'info' | 'warn' | 'error'
+  timestamp: number
+  message: string
+}
+
 // Custom APIs for renderer
 const api = {
   // Settings
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke('get-settings'),
   updateSettings: (updates: Partial<AppSettings>): Promise<AppSettings> =>
     ipcRenderer.invoke('update-settings', updates),
+  selectGeminiKey: (index: number): Promise<AppSettings> => ipcRenderer.invoke('select-gemini-key', index),
   hasApiKeys: (): Promise<boolean> => ipcRenderer.invoke('has-api-keys'),
   fetchOpenAIModels: (
     apiKey: string
@@ -63,6 +73,10 @@ const api = {
   getCaptureStatus: (): Promise<boolean> => ipcRenderer.invoke('get-capture-status'),
   sendAudioData: (audioData: ArrayBuffer): void => ipcRenderer.send('audio-data', audioData),
   getAudioSources: (): Promise<AudioSource[]> => ipcRenderer.invoke('get-audio-sources'),
+
+  // Main-process terminal logs only (not renderer/devtools output).
+  getTerminalLogs: (): Promise<TerminalLogEntry[]> => ipcRenderer.invoke('get-terminal-logs'),
+  clearTerminalLogs: (): Promise<{ success: boolean }> => ipcRenderer.invoke('clear-terminal-logs'),
 
   // Window controls
   setAlwaysOnTop: (value: boolean): Promise<boolean> =>
@@ -185,6 +199,12 @@ const api = {
       callback(data)
     ipcRenderer.on('screenshot-no-question', handler)
     return () => ipcRenderer.removeListener('screenshot-no-question', handler)
+  }
+,
+  onTerminalLog: (callback: (entry: TerminalLogEntry) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, entry: TerminalLogEntry): void => callback(entry)
+    ipcRenderer.on('terminal-log', handler)
+    return () => ipcRenderer.removeListener('terminal-log', handler)
   }
 }
 

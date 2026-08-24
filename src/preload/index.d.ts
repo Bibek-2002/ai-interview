@@ -20,6 +20,8 @@ export interface DetectedQuestionFromImage {
 
 export interface AppSettings {
   geminiApiKey: string
+  geminiApiKeys: string[]
+  activeGeminiKeyIndex: number
   assemblyAiApiKey: string
   geminiModel: string
   alwaysOnTop: boolean
@@ -43,10 +45,18 @@ export interface AnswerEntry {
   isStreaming: boolean
 }
 
+export interface TerminalLogEntry {
+  id: number
+  level: 'log' | 'info' | 'warn' | 'error'
+  timestamp: number
+  message: string
+}
+
 export interface Api {
   // Settings
   getSettings: () => Promise<AppSettings>
   updateSettings: (updates: Partial<AppSettings>) => Promise<AppSettings>
+  selectGeminiKey: (index: number) => Promise<AppSettings>
   hasApiKeys: () => Promise<boolean>
   fetchOpenAIModels: (
     apiKey: string
@@ -58,6 +68,8 @@ export interface Api {
   getCaptureStatus: () => Promise<boolean>
   sendAudioData: (audioData: ArrayBuffer) => void
   getAudioSources: () => Promise<AudioSource[]>
+  getTerminalLogs: () => Promise<TerminalLogEntry[]>
+  clearTerminalLogs: () => Promise<{ success: boolean }>
 
   // Window controls
   setAlwaysOnTop: (value: boolean) => Promise<boolean>
@@ -110,6 +122,7 @@ export interface Api {
     callback: (question: DetectedQuestionFromImage) => void
   ) => () => void
   onScreenshotNoQuestion: (callback: (data: { message: string }) => void) => () => void
+  onTerminalLog: (callback: (entry: TerminalLogEntry) => void) => () => void
 }
 
 declare global {
