@@ -12,10 +12,22 @@ let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let isQuitting = false
 
+/**
+ * A normal always-on-top window can still sit behind a borderless/fullscreen
+ * browser window on Windows. Use Electron's highest non-exclusive level so
+ * the Copilot remains usable while the interview is in fullscreen.
+ */
+function keepWindowAboveFullscreen(): void {
+  if (!mainWindow) return
+  mainWindow.setAlwaysOnTop(true, process.platform === 'win32' ? 'screen-saver' : 'floating')
+  if (mainWindow.isVisible()) mainWindow.moveTop()
+}
+
 function showMainWindow(): void {
   if (!mainWindow) return
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.show()
+  keepWindowAboveFullscreen()
   mainWindow.focus()
 }
 
@@ -72,6 +84,7 @@ function createWindow(): void {
     }
   })
   setTerminalLogWindow(mainWindow)
+  keepWindowAboveFullscreen()
 
   // Enable screen share protection - hides window from screen capture
   mainWindow.setContentProtection(true)

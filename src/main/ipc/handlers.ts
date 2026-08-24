@@ -21,6 +21,13 @@ let isCapturing = false
 let pendingQuestionText = ''
 let questionGenerationTimer: ReturnType<typeof setTimeout> | null = null
 
+function setOverlayAlwaysOnTop(window: BrowserWindow, value: boolean): void {
+  // Windows fullscreen/borderless applications can outrank the default
+  // always-on-top level. `screen-saver` keeps this opt-in overlay accessible.
+  window.setAlwaysOnTop(value, process.platform === 'win32' ? 'screen-saver' : 'floating')
+  if (value && window.isVisible()) window.moveTop()
+}
+
 export function initializeIpcHandlers(window: BrowserWindow): void {
   mainWindow = window
   settingsManager = new SettingsManager()
@@ -44,7 +51,7 @@ export function initializeIpcHandlers(window: BrowserWindow): void {
 
     // Apply window settings immediately
     if (updates.alwaysOnTop !== undefined && mainWindow) {
-      mainWindow.setAlwaysOnTop(updates.alwaysOnTop)
+      setOverlayAlwaysOnTop(mainWindow, updates.alwaysOnTop)
     }
     if (updates.windowOpacity !== undefined && mainWindow) {
       mainWindow.setOpacity(updates.windowOpacity)
@@ -256,7 +263,7 @@ export function initializeIpcHandlers(window: BrowserWindow): void {
 
   // Window control handlers
   ipcMain.handle('set-always-on-top', (_event, value: boolean) => {
-    mainWindow?.setAlwaysOnTop(value)
+    if (mainWindow) setOverlayAlwaysOnTop(mainWindow, value)
     settingsManager?.setSetting('alwaysOnTop', value)
     return value
   })
@@ -329,6 +336,11 @@ export function initializeIpcHandlers(window: BrowserWindow): void {
       if (result.success && result.imageData) {
         mainWindow?.webContents.send('screenshot-captured', { imageData: result.imageData })
       }
+
+      // Capturing a fullscreen window can cause Windows to reorder its z-stack.
+      // Restore the overlay immediately without stealing focus or showing it in
+      // the taskbar.
+      if (mainWindow?.isAlwaysOnTop()) setOverlayAlwaysOnTop(mainWindow, true)
 
       return result
     } catch (error) {
