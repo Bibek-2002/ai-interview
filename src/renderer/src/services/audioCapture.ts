@@ -21,6 +21,11 @@ export class AudioCaptureService {
   private sourceNode: MediaStreamAudioSourceNode | null = null
   private isCapturing = false
   private options: AudioCaptureOptions
+  private captureType: 'microphone' | 'system' | null = null
+  private systemSourceId: string | null = null
+  private isRestarting = false
+  private deviceChangeListener: (() => void) | null = null
+  private lastRestartTime = 0
 
   constructor(options: AudioCaptureOptions = {}) {
     this.options = { ...DEFAULT_OPTIONS, ...options }
@@ -30,6 +35,9 @@ export class AudioCaptureService {
     if (this.isCapturing) return
 
     try {
+      this.captureType = 'microphone'
+      this.systemSourceId = null
+
       // Get microphone stream
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -38,6 +46,14 @@ export class AudioCaptureService {
           echoCancellation: this.options.echoCancellation,
           noiseSuppression: this.options.noiseSuppression,
           autoGainControl: this.options.autoGainControl
+        }
+      })
+
+      // Listen to track end
+      this.mediaStream.getAudioTracks().forEach((track) => {
+        track.onended = () => {
+          console.log('Microphone audio track ended, triggering restart...')
+          this.restartCapture()
         }
       })
 
@@ -65,8 +81,10 @@ export class AudioCaptureService {
       this.sourceNode.connect(this.workletNode)
 
       this.isCapturing = true
+      this.setupDeviceChangeDetector()
     } catch (error) {
       console.error('Failed to start microphone capture:', error)
+      this.captureType = null
       throw error
     }
   }
@@ -75,6 +93,9 @@ export class AudioCaptureService {
     if (this.isCapturing) return
 
     try {
+      this.captureType = 'system'
+      this.systemSourceId = sourceId
+
       // Use desktopCapturer source for system audio
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -95,6 +116,14 @@ export class AudioCaptureService {
 
       // Remove video track, we only need audio
       this.mediaStream.getVideoTracks().forEach((track) => track.stop())
+
+      // Listen to track end
+      this.mediaStream.getAudioTracks().forEach((track) => {
+        track.onended = () => {
+          console.log('System audio track ended, triggering restart...')
+          this.restartCapture()
+        }
+      })
 
       // Create audio context
       this.audioContext = new AudioContext({
@@ -118,8 +147,11 @@ export class AudioCaptureService {
       this.sourceNode.connect(this.workletNode)
 
       this.isCapturing = true
+      this.setupDeviceChangeDetector()
     } catch (error) {
       console.error('Failed to start system audio capture:', error)
+      this.captureType = null
+      this.systemSourceId = null
       throw error
     }
   }
@@ -178,6 +210,11 @@ export class AudioCaptureService {
   }
 
   async stop(): Promise<void> {
+    if (this.deviceChangeListener) {
+      navigator.mediaDevices.removeEventListener('devicechange', this.deviceChangeListener)
+      this.deviceChangeListener = null
+    }
+
     if (this.workletNode) {
       this.workletNode.disconnect()
       this.workletNode = null
@@ -199,9 +236,136 @@ export class AudioCaptureService {
     }
 
     this.isCapturing = false
+    this.captureType = null
+    this.systemSourceId = null
   }
 
   getIsCapturing(): boolean {
     return this.isCapturing
+  }
+
+  private setupDeviceChangeDetector(): void {
+    if (!this.deviceChangeListener) {
+      let debounceTimeout: any = null
+
+      this.deviceChangeListener = () => {
+        if (!this.isCapturing || this.isRestarting) return
+
+        if (debounceTimeout) {
+          clearTimeout(debounceTimeout)
+        }
+
+        debounceTimeout = setTimeout(async () => {
+          console.log('Audio capture: device change event detected, restarting stream...')
+          await this.restartCapture()
+        }, 1000)
+      }
+
+      navigator.mediaDevices.addEventListener('devicechange', this.deviceChangeListener)
+    }
+  }
+
+  private async restartCapture(): Promise<void> {
+    if (!this.isCapturing || this.isRestarting) return
+    this.isRestarting = true
+
+    const now = Date.now()
+    if (now - this.lastRestartTime < 2000) {
+      console.log('Audio capture: restart requested too soon, ignoring to avoid loop.')
+      this.isRestarting = false
+      return
+    }
+    this.lastRestartTime = now
+
+    try {
+      console.log('Audio capture: restarting stream due to device switch/track end...')
+
+      // 1. Disconnect and cleanup old nodes
+      if (this.workletNode) {
+        this.workletNode.disconnect()
+        this.workletNode = null
+      }
+
+      if (this.sourceNode) {
+        this.sourceNode.disconnect()
+        this.sourceNode = null
+      }
+
+      if (this.mediaStream) {
+        this.mediaStream.getTracks().forEach((track) => track.stop())
+        this.mediaStream = null
+      }
+
+      if (this.audioContext) {
+        await this.audioContext.close()
+        this.audioContext = null
+      }
+
+      // 2. Re-acquire media stream
+      if (this.captureType === 'system' && this.systemSourceId) {
+        this.mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            // @ts-ignore - Electron specific constraint
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: this.systemSourceId
+            }
+          },
+          video: {
+            // @ts-ignore - Electron specific constraint
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: this.systemSourceId
+            }
+          }
+        })
+
+        // Remove video track, we only need audio
+        this.mediaStream.getVideoTracks().forEach((track) => track.stop())
+      } else {
+        // Microphone capture
+        this.mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            sampleRate: this.options.sampleRate,
+            channelCount: this.options.channelCount,
+            echoCancellation: this.options.echoCancellation,
+            noiseSuppression: this.options.noiseSuppression,
+            autoGainControl: this.options.autoGainControl
+          }
+        })
+      }
+
+      // Listen to track end on new stream
+      this.mediaStream.getAudioTracks().forEach((track) => {
+        track.onended = () => {
+          console.log('Audio track ended, triggering restart...')
+          this.restartCapture()
+        }
+      })
+
+      // 3. Re-create audio context and nodes
+      this.audioContext = new AudioContext({
+        sampleRate: this.options.sampleRate
+      })
+
+      this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream)
+
+      await this.audioContext.audioWorklet.addModule(this.createWorkletBlobUrl())
+
+      this.workletNode = new AudioWorkletNode(this.audioContext, 'audio-processor')
+
+      this.workletNode.port.onmessage = (event) => {
+        if (event.data.audioData && this.isCapturing) {
+          this.handleAudioData(event.data.audioData)
+        }
+      }
+
+      this.sourceNode.connect(this.workletNode)
+      console.log('Audio capture: restarted successfully.')
+    } catch (error) {
+      console.error('Audio capture: failed to restart stream:', error)
+    } finally {
+      this.isRestarting = false
+    }
   }
 }
